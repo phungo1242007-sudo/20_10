@@ -375,7 +375,7 @@
         bottom: -50px;
         z-index: 1;
         pointer-events: none;
-        animation: up linear forwards;
+        animation: up ease-in-out forwards;
         filter: drop-shadow(0 0 8px rgba(255, 61, 132, 0.7));
       }
       @keyframes up {
@@ -432,6 +432,18 @@
           opacity: 0;
         }
       }
+      @media (pointer: coarse) {
+        * { cursor: auto !important; }
+        #cur, .trail { display: none !important; }
+        .glow { filter: blur(55px); }
+        .box { backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { scroll-behavior: auto !important; }
+        .star, .big, .t2, #hint, #cur span { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+        .heart { animation-duration: 12s !important; animation-iteration-count: 1 !important; }
+        .fly, .box, #stage, #card, .w, .quote, .sign, .btns { transition-duration: 0.7s !important; }
+      }
       .btns small {
         font-size: 0.7rem;
         opacity: 0.65;
@@ -474,12 +486,12 @@
         l2: "Hương Giang",
         name: "Hương Giang",
         intro:
-          "Nhân ngày 20/10, chúc Hương Giang luôn xinh đẹp, rạng rỡ như đóa hồng đầu mùa. Mong mỗi ngày của em đều ngập tràn tiếng cười và thật nhiều yêu thương. 🌸",
+          "Nhân ngày 20/10, chúc Hương Giang luôn xinh đẹp, rạng rỡ như đóa hồng. Mong mỗi ngày của em đều ngập tràn tiếng cười và thật nhiều yêu thương. 🌸",
         wishes: [
           ["🌸", "Luôn xinh đẹp", "Rạng rỡ từ nụ cười đến trái tim."],
           ["💖", "Thật hạnh phúc", "Mỗi ngày đều có một niềm vui nhỏ."],
           ["✨", "Bình yên", "Nhẹ nhàng giữa mọi bộn bề."],
-          ["🌹", "Được yêu thương", "Nhiều hơn bạn có thể đếm hết."],
+          ["🌹", "Được yêu thương", "Nhiều hơn em có thể đếm hết."],
         ],
         quote:
           "Cảm ơn em vì đã xuất hiện và làm thế giới này dịu dàng hơn rất nhiều.",
@@ -529,6 +541,7 @@
       build($("l2"), CFG.l2, "l2");
       total = flyers.length;
 
+      let rafId = 0, lastFrame = 0;
       function init() {
         // chữ thật
         flyers.forEach((f) =>
@@ -540,7 +553,7 @@
           flyers.push(f);
           mk(f, R(18, 56));
         }
-        requestAnimationFrame(tick);
+        if (!rafId) rafId = requestAnimationFrame(tick);
       }
       function mk(f, size) {
         const e = document.createElement("div");
@@ -569,9 +582,14 @@
           state: "fly",
         });
       }
-      function tick() {
+      function tick(now = performance.now()) {
+        rafId = 0;
+        const dt = lastFrame ? Math.min((now - lastFrame) / 16.67, 2) : 1;
+        lastFrame = now;
+        let active = false;
         flyers.forEach((f) => {
           if (f.state === "done" || !f.el) return;
+          active = true;
           if (f.state === "fly") {
             f.vx += R(-0.12, 0.12);
             f.vy += R(-0.12, 0.12);
@@ -581,10 +599,10 @@
               f.vx *= mx / m;
               f.vy *= mx / m;
             }
-            f.x += f.vx;
-            f.y += f.vy;
-            f.rot += f.vr;
-            f.t += 0.04;
+            f.x += f.vx * dt;
+            f.y += f.vy * dt;
+            f.rot += f.vr * dt;
+            f.t += 0.04 * dt;
             f.sc = 1 + Math.sin(f.t) * 0.35;
             if (f.x < 0 || f.x > W) f.vx *= -1;
             if (f.y < 0 || f.y > H) f.vy *= -1;
@@ -592,16 +610,18 @@
             f.y = Math.max(-10, Math.min(H + 10, f.y));
           } else {
             const k = 0.075;
-            f.x += (f.tx - f.x) * k;
-            f.y += (f.ty - f.y) * k;
-            f.rot += (0 - f.rot) * k;
-            f.sc += (1 - f.sc) * k;
+            const step = 1 - Math.pow(1 - k, dt);
+            f.x += (f.tx - f.x) * step;
+            f.y += (f.ty - f.y) * step;
+            f.rot += (0 - f.rot) * step;
+            f.sc += (1 - f.sc) * step;
             if (Math.hypot(f.tx - f.x, f.ty - f.y) < 1.2 && Math.abs(f.rot) < 1)
               land(f);
           }
           f.el.style.transform = `translate(${f.x}px,${f.y}px) translate(-50%,-50%) rotate(${f.rot}deg) scale(${f.sc})`;
         });
-        requestAnimationFrame(tick);
+        if (active) rafId = requestAnimationFrame(tick);
+        else lastFrame = 0;
       }
       function land(f) {
         f.state = "done";
@@ -614,14 +634,16 @@
           setTimeout(showCard, 1800);
         }
       }
-      setInterval(
-        () =>
-          flyers.forEach((f) => {
-            if (f.el && f.state !== "done" && Math.random() < 0.4)
-              f.el.textContent = rnd(POOL);
-          }),
-        150,
-      );
+      const scrambleTimer = setInterval(() => {
+        let active = false;
+        flyers.forEach((f) => {
+          if (f.el && f.state !== "done") {
+            active = true;
+            if (Math.random() < 0.4) f.el.textContent = rnd(POOL);
+          }
+        });
+        if (!active) clearInterval(scrambleTimer);
+      }, 150);
 
       function decode() {
         if (decoding) return;
@@ -687,19 +709,24 @@
         const h = document.createElement("div");
         h.className = "heart";
         h.textContent = rnd(HEARTS);
-        const d = R(5, 11);
+        const d = R(9, 15);
         h.style.cssText += `left:${R(0, 100)}vw;font-size:${R(16, 44)}px;animation-duration:${d}s;--dx:${R(-80, 80)}px;--rot:${R(-40, 40)}deg;opacity:${R(0.6, 1)}`;
         document.body.appendChild(h);
         setTimeout(() => h.remove(), d * 1000);
       }
       function heartStorm() {
-        for (let i = 0; i < 40; i++) setTimeout(heart, i * 60);
+        for (let i = 0; i < 40; i++) setTimeout(heart, i * 85);
       }
 
       function showCard() {
         $("stage").classList.add("hide");
         $("card").classList.add("show");
-        setInterval(heart, 280);
+        const heartRate = matchMedia("(pointer: coarse)").matches ? 420 : 340;
+        const heartTimer = setInterval(() => {
+          if (document.hidden) return;
+          heart();
+
+        }, heartRate);
         heartStorm();
         let i = 0;
         setTimeout(function type() {
@@ -730,6 +757,7 @@
       document.body.appendChild(cur);
       let lt = 0;
       addEventListener("pointermove", (e) => {
+        if (matchMedia("(pointer: coarse)").matches) return;
         cur.style.transform = `translate(${e.clientX}px,${e.clientY}px) translate(-50%,-50%)`;
         cur.style.opacity = 1;
         const n = performance.now();
